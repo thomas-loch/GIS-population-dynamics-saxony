@@ -1,0 +1,76 @@
+---
+title: "Population dynamics in Saxon municipalities"
+format: html
+echo: false
+---
+
+```{r}
+#| warning: false
+#| echo: false
+# load the required libraries and functions
+source("code/libraries_functions.R")
+```
+
+```{r}
+#| warning: false
+#| echo: false
+# perform the data preparation
+source("code/preparation.R")
+```
+
+## A map done using vector and raster data 
+
+```{r}
+#| warning: false
+#| echo: false
+
+ggplot() + geom_sf(data=saxony, aes(fill=pop_2015)) + theme_minimal() + 
+  labs(title= "Population in Saxon municipalities in 2015", 
+       fill= "population", 
+       subtitle= "(color scales logarithmized)") +
+    scale_fill_viridis_c(trans="log10", labels=scales::comma)
+
+ggplot() + geom_sf(data=saxony, aes(fill=pop_growth)) + theme_minimal() + 
+  labs(title= "Population change in Saxon municipalities from 2015 to 2020", 
+       fill= "population change in %") +
+    scale_fill_distiller()
+
+```
+
+## Data description
+
+A clear description of the data and a summary table
+
+```{r}
+#| warning: false
+#| echo: false
+
+# data description
+data.frame(
+  Variable = c("pop_growth","pop_2015","unemployed","purchasing_power","distance_supermarkets","distance_pharmacy"), 
+  Description = c("log(pop_2020/pop_2015)","log(pop_2015","log(number of unemployed in 2010)","log(available income per capita in 2010 in Euro)","log(average distance to the next supermarket)","log(average distance to the next pharmacy)")
+) %>% datasummary_df(data=.)
+
+
+# summary table
+#saxony %>% datasummary_skim()
+saxony %>% datasummary(pop_growth + pop_2015_log + unemployed_log + purchasing_power + distance_supermarkets + distance_pharmacy ~ Mean + SD + Min + Median + Max + Histogram, data=.)
+```
+
+
+## A research question and a strategy to answer to it with your data
+
+
+
+## A findings regression table, descriptive table or something showing the results you obtained
+
+```{r}
+#| warning: false
+#| echo: false
+
+# preliminary basic regression
+feols(pop_growth ~ pop_2015_log + unemployed_log + log(purchasing_power) + distance_supermarkets + distance_pharmacy, data=saxony, vcov=~ORTSNAME) %>% modelsummary()
+```
+
+
+## A discussion on how your findings answer your research question 
