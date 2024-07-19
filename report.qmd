@@ -2,6 +2,7 @@
 title: "Population dynamics in Saxon municipalities"
 format: html
 echo: false
+bibliography: references.bib
 ---
 
 ```{r}
@@ -18,28 +19,34 @@ source("code/libraries_functions.R")
 source("code/preparation.R")
 ```
 
-## A map done using vector and raster data 
+```{r}
+#| warning: false
+#| echo: false
+#| label: fig-pop-saxony
+#| fig-cap: Population in Saxon municipalities in 2015
+
+ggplot() + geom_sf(data=saxony, aes(fill=pop_2015)) + theme_minimal() + 
+  labs(fill= "population", 
+       subtitle= "(color scales logarithmized)") +
+    scale_fill_viridis_c(trans="log10", labels=scales::comma)
+
+```
 
 ```{r}
 #| warning: false
 #| echo: false
-
-ggplot() + geom_sf(data=saxony, aes(fill=pop_2015)) + theme_minimal() + 
-  labs(title= "Population in Saxon municipalities in 2015", 
-       fill= "population", 
-       subtitle= "(color scales logarithmized)") +
-    scale_fill_viridis_c(trans="log10", labels=scales::comma)
+#| label: fig-pop-change
+#| fig-cap: Population change in Saxon municipalities from 2015 to 2020
 
 ggplot() + geom_sf(data=saxony, aes(fill=pop_growth)) + theme_minimal() + 
-  labs(title= "Population change in Saxon municipalities from 2015 to 2020", 
-       fill= "population change in %") +
+  labs(fill= "population change in %") +
     scale_fill_distiller()
 
 ```
 
 ## Data description
 
-A clear description of the data and a summary table
+This analysis uses population data from the SEDAC Gridded Population of the World (GPW), v4 for the years 2015 and 2020 in the highest resolution (30 arc-second grid cells), which yields rasters that depict about 1 km of actual land space. These raster information are then compiled to Saxon municipality population counts and finally used to calculate the population growth rate over 5 years. In sum, there are 418 observed municipalities.
 
 ```{r}
 #| warning: false
@@ -48,29 +55,71 @@ A clear description of the data and a summary table
 # data description
 data.frame(
   Variable = c("pop_growth","pop_2015","unemployed","purchasing_power","distance_supermarkets","distance_pharmacy"), 
-  Description = c("log(pop_2020/pop_2015)","log(pop_2015","log(number of unemployed in 2010)","log(available income per capita in 2010 in Euro)","log(average distance to the next supermarket)","log(average distance to the next pharmacy)")
+  Description = c("log(pop_2020/pop_2015)","log(pop_2015","log(number of unemployed in 2015)","log(available income per capita in 2015 in Euro)","log(average distance to the next supermarket)","log(average distance to the next pharmacy)")
 ) %>% datasummary_df(data=.)
 
 
 # summary table
-#saxony %>% datasummary_skim()
-saxony %>% datasummary(pop_growth + pop_2015_log + unemployed_log + purchasing_power + distance_supermarkets + distance_pharmacy ~ Mean + SD + Min + Median + Max + Histogram, data=.)
+saxony %>% datasummary(pop_growth + pop_2015_log + unemployed_log + purchasing_power + distance_supermarkets + distance_pharmacy + reachability_middle_city + reachability_metropolitan + settlement_space_share + recreations_space_share ~ Mean + SD + Min + Median + Max + Histogram, data=.)
 ```
 
+The population information are then joined by municipality-specific information from the INKAR portal of the German Federal Office for Building and Regional Planning (BBR). Following [@alamá-sabater2021], the explanatory variables cover economic conditions, accessibility, public facilities, and natural amenities. Economic conditions are measured by the unemployment rate and purchasing power per capita. Accessibility is defined as the distance to the nearest middle or large center, according to the Central Place theory as applied in Germany. Public facilities are measured by the average distance to the next supermarket and to the next pharmacy. The space share reserved for settlement (e.g. buildings, roads) and recreation (mostly green areas) serve as proxies for natural amenities.
 
-## A research question and a strategy to answer to it with your data
+## Setting and Empirical Strategy
 
+I examine the German federal state Saxony, where most of the regions are expected to lose population over the coming decades [@maretzke2024]. But as shown in Figure 2, there is spatial heterogeneity in population change rates. In the following analysis, I will shed light on the effect of economic conditions, accessibility, public facilities, and natural amenities on population change trajectories. For this, I propose a simple growth model based on that of [@alamá-sabater2021]:
 
+$$
+popgrowth_i = \beta_0 + \beta_1pop2015_i + \beta_2unemployed_i + \beta_4purchasingpower_i
+$$
+$$
++ \beta_5distancesupermarkets_i + \beta_6distancepharmacy_i + \beta_7distancemiddlecity_i
+$$
+$$
++ \beta_8recreations_i + u_i
+$$
 
-## A findings regression table, descriptive table or something showing the results you obtained
+Derived from economic intuition, I expect the following directions of impact: 
+As people tend to shift from worse to better labour market conditions, the effect of rising unemployment should be negative. At the same, higher income regions attract more workers, so that purchasing power should rise population growth. Easy access to public facilities elevates quality of life, therefore lower average distance to supermarkets and pharmacies should attract more residents. The same applies to distance to urban clusters (access to agglomerations, for example in social institutions or culture) and the share of recreational area.
+
+## Results
+
+Specification 1 in the table shows the baseline results for the model proposed above calculated by simple OLS with standard errors clustered at the Kreis (county) level. Specification 2 switches then to Conley standard errors using the conleyreg-package. In that case, unemployment shows a small significant coefficient, while purchasing power has a huge positive effect. The effects of the distance to the next middle center and of the share of recreational space is positive, but very small. The effect of public facilities is small and insignificant. Specification 3 then turns to some more specific alternative measures offered by the INKAR database, where $log(purchasingpowerretail)$ is the available income for retail spending, $reachabilitymetropolitan$ the distance to the next metropolitan center, and $settlementspaceshare$ the area share of settlement and traffic use. The measures for purchasing power and space use share render insignificant, while the effect of distance to centers shrinks even smaller. Interestingly, in this specification the effect of unemployment rises. In all three specifications the effect of incumbent residents shows a positive effect. 
 
 ```{r}
 #| warning: false
 #| echo: false
 
 # preliminary basic regression
-feols(pop_growth ~ pop_2015_log + unemployed_log + log(purchasing_power) + distance_supermarkets + distance_pharmacy, data=saxony, vcov=~ORTSNAME) %>% modelsummary()
+spec_1 <- saxony %>% mutate(distance_supermarkets = distance_supermarkets / 1000, 
+                  distance_pharmacy = distance_pharmacy / 1000) %>% 
+feols(pop_growth ~ pop_2015_log + unemployed_log + log(purchasing_power) +  distance_supermarkets + distance_pharmacy + reachability_middle_city +  recreations_space_share, data=., vcov=~KREIS)
+
+
+spec_2 <- saxony %>% mutate(distance_supermarkets = distance_supermarkets / 1000, 
+                  distance_pharmacy = distance_pharmacy / 1000) %>% 
+conleyreg(pop_growth ~ pop_2015_log + unemployed_log + log(purchasing_power) +  distance_supermarkets + distance_pharmacy + reachability_middle_city +  recreations_space_share, data=., dist_cutoff=5) 
+
+
+spec_3 <- saxony %>% mutate(distance_supermarkets = distance_supermarkets / 1000, 
+                  distance_pharmacy = distance_pharmacy / 1000) %>% 
+conleyreg(pop_growth ~ pop_2015_log + unemployed_log + log(purchasing_power_retail) + distance_supermarkets + distance_pharmacy + reachability_metropolitan + settlement_space_share, data=., dist_cutoff=5) 
+
+
+modelsummary(
+  list(spec_1, spec_2, spec_3),
+  stars = TRUE, 
+  gof_omit = "Num.Obs.|R2|R2 Adj.|AIC|BIC|RMSE|Std.Errors", 
+  coef_map = c("Intercept", "pop_2015_log", "unemployed_log", "log(purchasing_power)", "log(purchasing_power_retail)", "distance_supermarkets", "distance_pharmacy", "reachability_middle_city", "reachability_metropolitan", "recreations_space_share", "settlement_space_share")
+)
+
 ```
 
+## Discussion
 
-## A discussion on how your findings answer your research question 
+I have shown that municipalities with already high levels of population count grow faster than cities with fewer inhabitants. This could catch agglomeration effects, such as social and cultural. There is also a negative effect of higher unemployment and a positive effect of purchasing power, which sheds light on the importance of labour market conditions. The distance to public facilities like supermarkets and pharmacies, and to middle and large centers has no significant effect, which could be explained by already sufficient coverage and accessibility across the state, but perhaps there are other public facilities that are more unevenly distributed or the residents are more responsive to the heterogeneous distances. 
+Further inquiry could incorporate spatial autocorrelation, more accurate measures of public facilities and more granular data, as many rural municipalities have much heterogeneity in themselves, as they typically consist of a core town and multiple villages around. 
+A heavy barrier in this analysis was data availability, as many data series only begin after 2010.
+
+
+## References
