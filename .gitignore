@@ -9,6 +9,5 @@
 # User-specific files
 .Ruserdata
 
-data/ 
 output/
 .Rproj.user
